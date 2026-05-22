@@ -1,1 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f0f1a">
+<title>Claude Chat</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;width:100%;overflow:hidden;background:#0f0f1a;color:#e8e6f0;font-family:'Noto Sans TC',system-ui,sans-serif}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:4px}
+#app{display:flex;flex-direction:column;position:fixed;top:0;left:0;right:0;bottom:0}
 
+/* Sidebar */
+.sidebar-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:80;opacity:0;pointer-events:none;transition:opacity .25s}
+.sidebar-overlay.open{opacity:1;pointer-events:auto}
+.sidebar{position:fixed;top:0;left:0;bottom:0;width:280px;background:#13132a;z-index:90;transform:translateX(-100%);transition:transform .25s ease;display:flex;flex-direction:column;padding-top:max(12px,env(safe-area-inset-top))}
+.sidebar.open{transform:translateX(0)}
+.sidebar-header{padding:16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.06)}
+.sidebar-header h3{font-size:16px;font-weight:700}
+.sidebar-new{background:linear-gradient(135deg,#7c6fea,#a78bfa);color:#fff;border:none;border-radius:10px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px}
+.sidebar-new:active{transform:scale(.96)}
+.conv-list{flex:1;overflow-y:auto;padding:8px}
+.conv-item{padding:12px 14px;border-radius:12px;margin-bottom:4px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:background .15s;position:relative}
+.conv-item:active,.conv-item.active{background:rgba(124,111,234,.15)}
+.conv-item.active{border:1px solid rgba(124,111,234,.25)}
+.conv-item:not(.active){border:1px solid transparent}
+.conv-title{font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;margin-right:8px}
+.conv-time{font-size:10px;opacity:.35;white-space:nowrap}
+.conv-del{background:none;border:none;color:#e8e6f0;opacity:.3;cursor:pointer;padding:4px;display:flex;font-size:16px;border-radius:6px;flex-shrink:0;margin-left:4px}
+.conv-del:active{opacity:.8;background:rgba(239,68,68,.15)}
+
+/* Header */
+.header{padding:12px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.06);background:linear-gradient(180deg,rgba(30,28,50,.97),rgba(15,15,26,.97));backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);flex-shrink:0;z-index:10;padding-top:max(12px,env(safe-area-inset-top))}
+.header-left{display:flex;align-items:center;gap:10px}
+.menu-btn{background:rgba(255,255,255,.06);border:1px solid transparent;border-radius:10px;padding:8px 10px;cursor:pointer;color:#e8e6f0;display:flex;align-items:center}
+.menu-btn:active{background:rgba(255,255,255,.12)}
+.logo{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#7c6fea,#c084fc);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#fff;box-shadow:0 2px 10px rgba(124,111,234,.25)}
+.header-title{font-size:15px;font-weight:700;letter-spacing:-.02em}
+.header-sub{font-size:11px;opacity:.4;margin-top:-1px}
+.header-sub .online{color:#6ee7b7;margin-left:6px}
+.header-btns{display:flex;gap:6px}
+.icon-btn{background:rgba(255,255,255,.06);border:1px solid transparent;border-radius:10px;padding:8px 10px;cursor:pointer;color:#e8e6f0;display:flex;align-items:center}
+.icon-btn:active{background:rgba(255,255,255,.12)}
+.icon-btn.active{background:rgba(124,111,234,.25);border-color:rgba(124,111,234,.4)}
+
+/* Chat */
+.chat-area{flex:1;overflow-y:auto;padding:16px 14px;display:flex;flex-direction:column;gap:6px;-webkit-overflow-scrolling:touch;min-height:0}
+.empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:.35;text-align:center;padding:40px 20px;gap:10px}
+.msg-row{display:flex;animation:msgIn .25s ease;flex-direction:column}
+.msg-row.user{align-items:flex-end}
+.msg-row.assistant{align-items:flex-start}
+.msg-row.no-anim{animation:none}
+.bubble{max-width:85%;padding:12px 16px;word-break:break-word;font-size:14.5px;line-height:1.65}
+.bubble.user{border-radius:18px 18px 4px 18px;background:linear-gradient(135deg,#6d5dd3,#8b5cf6);color:#fff;box-shadow:0 2px 12px rgba(109,93,211,.25);white-space:pre-wrap}
+.bubble.assistant{border-radius:18px 18px 18px 4px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.04)}
+.bubble.assistant p{margin:3px 0}.bubble.assistant h2{margin:16px 0 6px;font-size:18px;font-weight:700}.bubble.assistant h3{margin:14px 0 4px;font-size:16px;font-weight:700}.bubble.assistant h4{margin:12px 0 4px;font-size:15px;font-weight:700}
+.bubble.assistant pre{background:#1a1a2e;color:#e0def4;padding:14px 16px;border-radius:10px;overflow-x:auto;font-size:13px;font-family:'JetBrains Mono',monospace;margin:8px 0;line-height:1.5;border:1px solid rgba(255,255,255,.06);white-space:pre-wrap;word-break:break-all}
+.bubble.assistant code.inline{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;font-size:.9em;font-family:'JetBrains Mono',monospace}
+.bubble.assistant .list-item{padding-left:16px;position:relative;margin:2px 0}.bubble.assistant .list-dot{position:absolute;left:4px}
+.bubble.assistant .num-item{padding-left:20px;position:relative;margin:2px 0}.bubble.assistant .num-label{position:absolute;left:2px;font-weight:600}
+.msg-actions{display:flex;gap:6px;margin-top:3px}
+.action-btn{background:none;border:none;cursor:pointer;opacity:.35;color:inherit;padding:3px 6px;display:flex;align-items:center;gap:3px;font-size:11px;font-family:inherit;border-radius:6px}
+.action-btn:active{opacity:1;background:rgba(255,255,255,.08)}
+.typing-dots{display:flex;gap:5px;align-items:center;padding:14px 20px}
+.typing-dots span{width:7px;height:7px;border-radius:50%;background:#a78bfa;animation:pulse 1.2s ease-in-out infinite}
+.typing-dots span:nth-child(2){animation-delay:.15s}.typing-dots span:nth-child(3){animation-delay:.3s}
+.error-msg{margin:8px 0;padding:12px 16px;border-radius:14px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:#fca5a5;font-size:13px;line-height:1.5;word-break:break-word}
+
+/* Input */
+.input-area{padding:12px 14px;padding-bottom:max(16px,env(safe-area-inset-bottom));border-top:1px solid rgba(255,255,255,.06);background:rgba(15,15,26,1);flex-shrink:0}
+.input-wrap{display:flex;align-items:flex-end;gap:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:6px 8px 6px 16px;transition:border-color .2s}
+.input-wrap:focus-within{border-color:rgba(124,111,234,.4)}
+.input-wrap textarea{flex:1;border:none;outline:none;background:transparent;color:#e8e6f0;font-size:15px;resize:none;max-height:150px;line-height:1.5;padding:8px 0;font-family:'Noto Sans TC',system-ui,sans-serif}
+.input-wrap textarea::placeholder{color:rgba(255,255,255,.25)}
+.send-btn{width:40px;height:40px;border-radius:14px;border:none;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0;cursor:pointer}
+.send-btn.active{background:linear-gradient(135deg,#7c6fea,#a78bfa);color:#fff}
+.send-btn.inactive{background:rgba(255,255,255,.06);color:rgba(255,255,255,.2);cursor:default}
+.edit-bar{padding:8px 14px;background:rgba(124,111,234,.15);border-top:1px solid rgba(124,111,234,.2);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;font-size:13px;color:#c4b5fd}
+.edit-bar.hidden{display:none}
+.edit-bar button{background:none;border:none;cursor:pointer;font-family:inherit;font-size:13px;padding:4px 10px;border-radius:8px}
+.edit-cancel{color:#e8e6f0;opacity:.6}.edit-cancel:active{opacity:1}
+
+/* Settings */
+.overlay{position:fixed;top:0;left:0;right:0;bottom:0;z-index:50;background:rgba(0,0,0,.6);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:flex-end;justify-content:center;animation:fadeIn .2s ease}
+.overlay.hidden{display:none}
+.settings-panel{background:#1a1a2e;border-radius:20px 20px 0 0;padding:24px 22px;padding-bottom:max(34px,env(safe-area-inset-bottom));width:100%;max-width:500px;max-height:85vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(0,0,0,.5);animation:slideUp .3s ease}
+.settings-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.settings-header h2{font-size:18px;font-weight:700}
+.close-btn{background:none;border:none;color:#e8e6f0;cursor:pointer;padding:4px}
+.field-label{font-size:13px;font-weight:500;opacity:.7;display:block;margin-bottom:6px}
+.field-label .hint{opacity:.5;font-weight:400}
+.text-input{width:100%;padding:12px 14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:12px;color:#e8e6f0;font-size:14px;outline:none;transition:border-color .2s}
+.text-input:focus{border-color:rgba(124,111,234,.5)}
+.text-input.mono{font-family:'JetBrains Mono',monospace}
+.text-input.area{resize:vertical;font-family:'Noto Sans TC',system-ui,sans-serif;line-height:1.6}
+.model-btns{display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap}
+.model-btn{padding:7px 12px;border-radius:10px;font-size:12px;font-weight:500;cursor:pointer;transition:all .2s;font-family:inherit}
+.model-btn.on{border:1px solid rgba(124,111,234,.5);background:rgba(124,111,234,.2);color:#c4b5fd}
+.model-btn.off{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#e8e6f0}
+.save-btn{width:100%;margin-top:20px;padding:14px;background:linear-gradient(135deg,#7c6fea,#a78bfa);color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:600;cursor:pointer;box-shadow:0 4px 20px rgba(124,111,234,.3);font-family:inherit}
+.save-btn:active{transform:scale(.97)}
+.toast{position:fixed;top:80px;left:50%;transform:translateX(-50%);background:rgba(110,231,183,.15);border:1px solid rgba(110,231,183,.3);color:#6ee7b7;padding:10px 20px;border-radius:12px;font-size:13px;font-weight:500;z-index:100;backdrop-filter:blur(10px);animation:fadeIn .2s ease}
+.toast.hidden{display:none}
+/* Toggle switch */
+.toggle-row{display:flex;align-items:center;justify-content:space-between;margin:18px 0 4px;padding:2px 0}
+.toggle-label{font-size:13px;font-weight:500;opacity:.7}
+.toggle-label small{display:block;font-weight:400;opacity:.6;font-size:11px;margin-top:2px}
+.toggle{width:44px;height:26px;border-radius:13px;background:rgba(255,255,255,.1);position:relative;cursor:pointer;transition:background .2s;flex-shrink:0;border:none}
+.toggle.on{background:rgba(124,111,234,.6)}
+.toggle .knob{width:20px;height:20px;border-radius:50%;background:#fff;position:absolute;top:3px;left:3px;transition:transform .2s}
+.toggle.on .knob{transform:translateX(18px)}
+/* Thinking block */
+.thinking-block{margin-bottom:8px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);overflow:hidden}
+.thinking-header{padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;opacity:.5;user-select:none}
+.thinking-header:active{opacity:.8}
+.thinking-header svg{transition:transform .2s}
+.thinking-header.open svg{transform:rotate(90deg)}
+.thinking-content{padding:0 12px 10px;font-size:13px;line-height:1.6;opacity:.55;display:none}
+.thinking-content.open{display:block}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+@keyframes msgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.1)}}
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h3>Chats</h3>
+    <button class="sidebar-new" onclick="newConversation()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New
+    </button>
+  </div>
+  <div class="conv-list" id="convList"></div>
+</div>
+
+<div id="app">
+  <div class="header">
+    <div class="header-left">
+      <button class="menu-btn" onclick="toggleSidebar()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div class="logo">C</div>
+      <div>
+        <div class="header-title">Claude Chat</div>
+        <div class="header-sub"><span id="modelLabel">—</span><span class="online" id="statusDot" style="display:none">● Connected</span></div>
+      </div>
+    </div>
+    <div class="header-btns">
+      <button class="icon-btn" id="settingsBtn" onclick="toggleSettings()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.32 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="chat-area" id="chatArea">
+    <div class="empty-state" id="emptyState">
+      <div style="font-size:40px">💬</div>
+      <div style="font-size:15px;font-weight:500" id="emptyText">Send a message to start</div>
+    </div>
+  </div>
+
+  <div class="edit-bar hidden" id="editBar">
+    <span>✏️ Editing...</span>
+    <button class="edit-cancel" onclick="cancelEdit()">Cancel</button>
+  </div>
+
+  <div class="input-area">
+    <div class="input-wrap">
+      <textarea id="msgInput" rows="1" placeholder="Set API key first..." disabled oninput="autoResize(this);updateSendBtn()" onkeydown="handleKey(event)"></textarea>
+      <button class="send-btn inactive" id="sendBtn" onclick="sendMessage()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings -->
+<div class="overlay hidden" id="overlay" onclick="if(event.target===this)toggleSettings()">
+  <div class="settings-panel">
+    <div class="settings-header">
+      <h2>Settings</h2>
+      <button class="close-btn" onclick="toggleSettings()">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <label class="field-label">API Key</label>
+    <input type="password" id="apiKeyInput" class="text-input mono" placeholder="sk-ant-api03-..." style="margin-bottom:18px">
+    <label class="field-label">Model</label>
+    <div class="model-btns" id="modelBtns"></div>
+    <label class="field-label">System Prompt <span class="hint">（optional）</span></label>
+    <textarea id="sysPromptInput" class="text-input area" rows="5" placeholder="Set the AI's personality, role, or instructions..."></textarea>
+    <label class="field-label" style="margin-top:18px">Memory <span class="hint">（persistent across all chats）</span></label>
+    <textarea id="memoryInput" class="text-input area" rows="4" placeholder="Info to always remember: name, preferences, key facts..."></textarea>
+    <div class="toggle-row">
+      <div class="toggle-label">Extended Thinking<small>Shows reasoning process（token ↑）</small></div>
+      <button class="toggle" id="thinkingToggle" onclick="toggleThinking()"><div class="knob"></div></button>
+    </div>
+    <div class="toggle-row">
+      <div class="toggle-label">Auto Compress<small>Summarize old messages to save tokens</small></div>
+      <button class="toggle on" id="compressToggle" onclick="toggleCompress()"><div class="knob"></div></button>
+    </div>
+    <button class="save-btn" onclick="saveSettings()">Save</button>
+  </div>
+</div>
+<div class="toast hidden" id="toast">✓ Saved</div>
+
+<script>
+var MODELS=[
+  {id:"claude-sonnet-4-6",label:"Sonnet 4.6"},
+  {id:"claude-sonnet-4-5",label:"Sonnet 4.5"},
+  {id:"claude-opus-4-7",label:"Opus 4.7"},
+  {id:"claude-opus-4-6",label:"Opus 4.6"},
+  {id:"claude-haiku-4-5-20251001",label:"Haiku 4.5"}
+];
+var DEFAULT_MODEL="claude-sonnet-4-6";
+
+// --- Storage helpers ---
+function ls(k,v){if(v===undefined)try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+function lsRaw(k,v){if(v===undefined)return localStorage.getItem(k)||"";localStorage.setItem(k,v)}
+
+// --- State ---
+var apiKey=lsRaw("ck_apiKey");
+var model=lsRaw("ck_model")||DEFAULT_MODEL;
+if(!MODELS.find(function(m){return m.id===model}))model=DEFAULT_MODEL;
+var systemPrompt=lsRaw("ck_sysPrompt");
+var memory=lsRaw("ck_memory");
+var thinkingEnabled=lsRaw("ck_thinking")==="1";
+var compressEnabled=lsRaw("ck_compress")!=="0"; // default on
+var loading=false,editingIndex=-1;
+
+// --- Conversations ---
+// convIndex: [{id,title,updatedAt}]  convMessages stored at ck_m_{id}
+var convIndex=ls("ck_convIdx")||[];
+var currentConvId=lsRaw("ck_curConv");
+var messages=[];
+
+function genId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+
+function saveConvIndex(){ls("ck_convIdx",convIndex)}
+function saveConvMessages(id,msgs){ls("ck_m_"+id,msgs)}
+function loadConvMessages(id){return ls("ck_m_"+id)||[]}
+function deleteConvData(id){try{localStorage.removeItem("ck_m_"+id)}catch(e){}}
+
+function newConversation(){
+  // Save current first
+  if(currentConvId)saveConvMessages(currentConvId,messages);
+  var id=genId();
+  var conv={id:id,title:"New chat",updatedAt:Date.now()};
+  convIndex.unshift(conv);
+  saveConvIndex();
+  currentConvId=id;
+  lsRaw("ck_curConv",id);
+  messages=[];
+  editingIndex=-1;
+  document.getElementById("editBar").classList.add("hidden");
+  renderConvList();
+  renderAllMessages();
+  updateUI();
+  closeSidebar();
+}
+
+function switchConv(id){
+  if(id===currentConvId){closeSidebar();return}
+  if(currentConvId)saveConvMessages(currentConvId,messages);
+  currentConvId=id;
+  lsRaw("ck_curConv",id);
+  messages=loadConvMessages(id);
+  editingIndex=-1;
+  document.getElementById("editBar").classList.add("hidden");
+  renderAllMessages();
+  updateUI();
+  closeSidebar();
+}
+
+function deleteConv(id,ev){
+  ev.stopPropagation();
+  convIndex=convIndex.filter(function(c){return c.id!==id});
+  saveConvIndex();
+  deleteConvData(id);
+  try{localStorage.removeItem("ck_s_"+id)}catch(e){}
+  if(id===currentConvId){
+    if(convIndex.length>0){switchConv(convIndex[0].id)}
+    else{newConversation()}
+  }
+  renderConvList();
+}
+
+function up
