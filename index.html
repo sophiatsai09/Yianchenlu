@@ -608,10 +608,10 @@ function buildApiMsgs(){
     }
     return{role:m.role,content:c};
   });
-  // Add cache_control to the 4th-from-last message (cache older history)
-  // This gives us a stable cache breakpoint
-  if(apiMsgs.length>=4){
-    var ci=apiMsgs.length-4;
+  // Add cache_control to second-to-last message
+  // This caches system + all history except the very last exchange
+  if(apiMsgs.length>=2){
+    var ci=apiMsgs.length-2;
     var target=apiMsgs[ci];
     if(typeof target.content==="string"){
       target.content=[{type:"text",text:target.content,cache_control:{type:"ephemeral"}}];
@@ -721,24 +721,20 @@ function setSummary(s){lr("ck_s_"+curConv,s)}
 
 function buildSys(){
   var blocks=[];
-  // Stable part — cached (system prompt + memory don't change often)
+  // Stable part — cached (prompt + memory + summary, rarely changes)
   var stable=[];
   if(sysPrompt.trim())stable.push(sysPrompt.trim());
   if(memory.trim())stable.push("[Memory]\n"+memory.trim());
+  var s=getSummary();
+  if(s)stable.push("[Previous conversation summary]\n"+s);
   if(stable.length>0){
     blocks.push({type:"text",text:stable.join("\n\n"),cache_control:{type:"ephemeral"}});
   }
-  // Dynamic part — NOT cached (changes every time)
-  var dynamic=[];
+  // Dynamic part — NOT cached (time changes every minute)
   var now=new Date();
   var days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
   var timeStr=now.getFullYear()+"/"+(now.getMonth()+1)+"/"+now.getDate()+" "+days[now.getDay()]+" "+String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
-  dynamic.push("[Current time]\n"+timeStr);
-  var s=getSummary();
-  if(s)dynamic.push("[Previous conversation summary]\n"+s);
-  if(dynamic.length>0){
-    blocks.push({type:"text",text:dynamic.join("\n\n")});
-  }
+  blocks.push({type:"text",text:"[Current time]\n"+timeStr});
   return blocks.length>0?blocks:null;
 }
 
