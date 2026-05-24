@@ -155,6 +155,12 @@ html,body{height:100%;width:100%;overflow:hidden;background:#0f0f1a;color:#e8e6f
 .save-mem-btn{background:none;border:none;cursor:pointer;color:#e8e6f0;opacity:.4;padding:6px;display:flex;align-items:center;flex-shrink:0}
 .save-mem-btn:active{opacity:.8}
 .save-mem-btn.working{opacity:.6;animation:pulse 1s infinite}
+/* Archive */
+.archive-msg{padding:10px 14px;border-radius:10px;margin-bottom:4px;font-size:13px;line-height:1.6}
+.archive-msg.user{background:rgba(124,111,234,.1);text-align:right}
+.archive-msg.assistant{background:rgba(255,255,255,.04)}
+.archive-role{font-size:10px;opacity:.4;margin-bottom:2px}
+.archive-empty{text-align:center;opacity:.35;padding:40px 0;font-size:13px}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 @keyframes msgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
@@ -196,6 +202,9 @@ html,body{height:100%;width:100%;overflow:hidden;background:#0f0f1a;color:#e8e6f
     <div class="header-btns">
       <button class="icon-btn" id="searchBtn">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </button>
+      <button class="icon-btn" id="archiveBtn" title="View archived messages">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
       </button>
       <button class="icon-btn" id="settingsBtn">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.32 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -271,6 +280,18 @@ html,body{height:100%;width:100%;overflow:hidden;background:#0f0f1a;color:#e8e6f
   </div>
 </div>
 <div class="toast hidden" id="toast">Saved</div>
+
+<div class="overlay hidden" id="archiveOverlay">
+  <div class="settings-panel" style="max-height:90vh">
+    <div class="settings-header">
+      <h2>Archived Messages</h2>
+      <button class="close-btn" id="closeArchiveBtn">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div id="archiveContent" style="max-height:65vh;overflow-y:auto"></div>
+  </div>
+</div>
 
 <div class="overlay hidden" id="searchOverlay">
   <div class="settings-panel" style="max-height:90vh">
@@ -360,7 +381,7 @@ function saveMsgs(id,m){
   ls("ck_m_"+id,stripped);
 }
 function loadMsgs(id){return ls("ck_m_"+id)||[]}
-function delMsgs(id){try{localStorage.removeItem("ck_m_"+id);localStorage.removeItem("ck_s_"+id)}catch(e){}}
+function delMsgs(id){try{localStorage.removeItem("ck_m_"+id);localStorage.removeItem("ck_s_"+id);localStorage.removeItem("ck_a_"+id)}catch(e){}}
 
 var $=document.getElementById.bind(document);
 
@@ -440,6 +461,9 @@ function init(){
   $("closeSearchBtn").addEventListener("click",toggleSearch);
   $("searchOverlay").addEventListener("click",function(e){if(e.target===this)toggleSearch()});
   $("searchInput").addEventListener("input",debounce(doSearch,300));
+  $("archiveBtn").addEventListener("click",toggleArchive);
+  $("closeArchiveBtn").addEventListener("click",toggleArchive);
+  $("archiveOverlay").addEventListener("click",function(e){if(e.target===this)toggleArchive()});
   $("thinkingToggle").addEventListener("click",function(){thinkOn=!thinkOn;updToggles()});
   $("compressToggle").addEventListener("click",function(){compressOn=!compressOn;updToggles()});
   $("saveBtn").addEventListener("click",saveSets);
@@ -547,6 +571,32 @@ function toggleSearch(){
   var opening=ov.classList.contains("hidden");
   ov.classList.toggle("hidden");
   if(opening){$("searchInput").value="";$("searchResults").innerHTML="";setTimeout(function(){$("searchInput").focus()},100)}
+}
+
+function toggleArchive(){
+  var ov=$("archiveOverlay");
+  var opening=ov.classList.contains("hidden");
+  ov.classList.toggle("hidden");
+  if(opening)renderArchive();
+}
+
+function renderArchive(){
+  var el=$("archiveContent");
+  var archive=ls("ck_a_"+curConv)||[];
+  if(archive.length===0){el.innerHTML='<div class="archive-empty">No archived messages for this chat.<br>Messages are archived when Auto Compress runs.</div>';return}
+  el.innerHTML="";
+  archive.forEach(function(m){
+    var div=document.createElement("div");
+    div.className="archive-msg "+m.role;
+    var role=document.createElement("div");
+    role.className="archive-role";
+    role.textContent=m.role==="user"?"You":"Claude";
+    div.appendChild(role);
+    var text=document.createElement("div");
+    text.textContent=m.content;
+    div.appendChild(text);
+    el.appendChild(div);
+  });
 }
 
 function debounce(fn,ms){var t;return function(){clearTimeout(t);var a=arguments,self=this;t=setTimeout(function(){fn.apply(self,a)},ms)}}
@@ -901,6 +951,12 @@ async function compress(){
   if(msgs.length<=KEEP+2)return;
   var old=msgs.slice(0,msgs.length-KEEP);
   var keep=msgs.slice(msgs.length-KEEP);
+
+  // Archive old messages before deleting them
+  var archive=ls("ck_a_"+curConv)||[];
+  old.forEach(function(m){archive.push({role:m.role,content:m.content,time:Date.now()})});
+  ls("ck_a_"+curConv,archive);
+
   var existing=getSummary();
   var prompt="";
   if(existing)prompt+="[Existing summary]\n"+existing+"\n\n";
@@ -917,7 +973,7 @@ async function compress(){
     trackUsage(data);
     var sum=(data.content||[]).filter(function(b){return b.type==="text"}).map(function(b){return b.text}).join("\n");
     if(sum){setSummary(sum);msgs=keep;saveMsgs(curConv,msgs);
-      var note=document.createElement("div");note.className="sys-note";note.textContent="\uD83D\uDCAD Old messages compressed to save tokens";$("chatArea").appendChild(note);scrollB()}
+      var note=document.createElement("div");note.className="sys-note";note.textContent="\uD83D\uDCAD Old messages archived & compressed";$("chatArea").appendChild(note);scrollB()}
   }catch(e){}
 }
 
