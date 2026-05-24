@@ -176,7 +176,8 @@ html,body{height:100%;width:100%;overflow:hidden;background:#0f0f1a;color:#e8e6f
   <div class="usage-bar" id="usageBar">
     Tokens: <span id="usageTokens">0</span><br>
     Cache hits: <span id="usageCache">0</span><br>
-    Est. cost: <span id="usageCost">$0.000</span>
+    Est. cost: <span id="usageCost">$0.000</span><br>
+    Storage: <span id="usageStorage">0%</span>
   </div>
 </div>
 
@@ -297,8 +298,33 @@ var MODELS=[
 ];
 var DM="claude-sonnet-4-6";
 
-function ls(k,v){if(arguments.length===1){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}}try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
-function lr(k,v){if(arguments.length===1)return localStorage.getItem(k)||"";localStorage.setItem(k,v);}
+function ls(k,v){if(arguments.length===1){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}}try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){showStorageWarning();return false}}
+function lr(k,v){if(arguments.length===1)return localStorage.getItem(k)||"";try{localStorage.setItem(k,v);return true}catch(e){showStorageWarning();return false}}
+
+function showStorageWarning(){
+  var existing=$("storageWarn");
+  if(existing)return; // already showing
+  var div=document.createElement("div");
+  div.id="storageWarn";
+  div.style.cssText="position:fixed;top:0;left:0;right:0;padding:10px 16px;background:#ef4444;color:#fff;font-size:13px;z-index:200;text-align:center;font-weight:500;padding-top:max(10px,env(safe-area-inset-top))";
+  div.textContent="\u26A0 Storage full! Messages may not be saved. Delete old chats or export & clear data.";
+  document.body.appendChild(div);
+  setTimeout(function(){if(div.parentNode)div.remove()},8000);
+}
+
+function getStorageUsage(){
+  var total=0;
+  for(var i=0;i<localStorage.length;i++){
+    var k=localStorage.key(i);
+    total+=k.length+(localStorage.getItem(k)||"").length;
+  }
+  return total;
+}
+function getStoragePercent(){
+  var used=getStorageUsage();
+  var max=5*1024*1024; // assume 5MB
+  return Math.min(100,Math.round(used/max*100));
+}
 
 var apiKey=lr("ck_apiKey");
 var model=lr("ck_model")||DM;
@@ -319,7 +345,20 @@ var msgs=[];
 
 function gid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
 function saveCIdx(){ls("ck_convIdx",convIdx)}
-function saveMsgs(id,m){ls("ck_m_"+id,m)}
+function saveMsgs(id,m){
+  // Strip base64 data from attachments before saving (huge space saver)
+  var stripped=m.map(function(msg){
+    var copy={role:msg.role,content:msg.content};
+    if(msg.thinking)copy.thinking=msg.thinking;
+    if(msg.attachments&&msg.attachments.length>0){
+      copy.attachments=msg.attachments.map(function(a){
+        return{name:a.name,mediaType:a.mediaType,isImg:a.isImg}; // no data or preview
+      });
+    }
+    return copy;
+  });
+  ls("ck_m_"+id,stripped);
+}
 function loadMsgs(id){return ls("ck_m_"+id)||[]}
 function delMsgs(id){try{localStorage.removeItem("ck_m_"+id);localStorage.removeItem("ck_s_"+id)}catch(e){}}
 
@@ -370,7 +409,7 @@ function renderConvs(){
   });
 }
 
-function toggleSB(){var s=$("sidebar"),o=$("sidebarOverlay");var open=!s.classList.contains("open");s.classList.toggle("open",open);o.classList.toggle("open",open)}
+function toggleSB(){var s=$("sidebar"),o=$("sidebarOverlay");var open=!s.classList.contains("open");s.classList.toggle("open",open);o.classList.toggle("open",open);if(open)updUsage()}
 function closeSB(){$("sidebar").classList.remove("open");$("sidebarOverlay").classList.remove("open")}
 
 function init(){
@@ -579,10 +618,11 @@ function trackUsage(data){
   ls("ck_usage",usage);updUsage();
 }
 function updUsage(){
-  var t=$("usageTokens"),c=$("usageCost"),ch=$("usageCache");
+  var t=$("usageTokens"),c=$("usageCost"),ch=$("usageCache"),st=$("usageStorage");
   if(t)t.textContent=(usage.input+usage.output).toLocaleString();
   if(c)c.textContent="$"+usage.cost.toFixed(4);
   if(ch)ch.textContent=(usage.cacheRead||0).toLocaleString()+" tokens saved";
+  if(st){var pct=getStoragePercent();st.textContent=pct+"%";st.style.color=pct>80?"#ef4444":pct>60?"#fbbf24":"#6ee7b7"}
 }
 
 // --- Attachments ---
@@ -632,14 +672,15 @@ function buildMsgContent(text){
 function buildApiMsgs(){
   var apiMsgs=msgs.map(function(m){
     var c=m.content;
-    if(Array.isArray(m.attachments)&&m.attachments.length>0){
+    // Only include attachments that still have base64 data (current session only)
+    if(Array.isArray(m.attachments)&&m.attachments.length>0&&m.attachments[0].data){
       var parts=[];
       m.attachments.forEach(function(a){
+        if(!a.data)return;
         if(a.isImg)parts.push({type:"image",source:{type:"base64",media_type:a.mediaType,data:a.data}});
         else if(a.mediaType==="application/pdf")parts.push({type:"document",source:{type:"base64",media_type:a.mediaType,data:a.data}});
       });
-      parts.push({type:"text",text:c});
-      return{role:m.role,content:parts};
+      if(parts.length>0){parts.push({type:"text",text:c});return{role:m.role,content:parts}}
     }
     return{role:m.role,content:c};
   });
@@ -790,8 +831,10 @@ function addBub(role,content,noA,idx,think){
       msg.attachments.forEach(function(a){
         if(a.isImg&&a.preview){
           var img=document.createElement("img");img.src=a.preview;img.className="msg-img";bub.appendChild(img);
+        }else if(a.isImg){
+          var fd=document.createElement("div");fd.style.cssText="font-size:11px;opacity:.7;margin:4px 0";fd.textContent="\uD83D\uDDBC "+a.name;bub.appendChild(fd);
         }else{
-          var fd=document.createElement("div");fd.style.cssText="font-size:11px;opacity:.7;margin:4px 0";fd.textContent="\uD83D\uDCCE "+a.name;bub.appendChild(fd);
+          var fd2=document.createElement("div");fd2.style.cssText="font-size:11px;opacity:.7;margin:4px 0";fd2.textContent="\uD83D\uDCCE "+a.name;bub.appendChild(fd2);
         }
       });
     }
