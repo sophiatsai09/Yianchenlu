@@ -672,7 +672,14 @@ function updUsage(){
   if(t)t.textContent=(usage.input+usage.output).toLocaleString();
   if(c)c.textContent="$"+usage.cost.toFixed(4);
   if(ch)ch.textContent=(usage.cacheRead||0).toLocaleString()+" tokens saved";
-  if(st){var pct=getStoragePercent();st.textContent=pct+"%";st.style.color=pct>80?"#ef4444":pct>60?"#fbbf24":"#6ee7b7"}
+  if(st){
+    var bytes=getStorageUsage()*2; // UTF-16 = 2 bytes per char
+    var kb=(bytes/1024).toFixed(0);
+    var maxKB=5120;
+    var pct=Math.round(bytes/(maxKB*1024)*100);
+    st.textContent=kb+"KB / "+maxKB+"KB ("+pct+"%)";
+    st.style.color=pct>80?"#ef4444":pct>60?"#fbbf24":"#6ee7b7";
+  }
 }
 
 // --- Attachments ---
