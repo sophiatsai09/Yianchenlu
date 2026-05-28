@@ -358,7 +358,7 @@ var loading=false,editIdx=-1;
 var attachments=[]; // [{name,type,data,mediaType}]
 var usage=ls("ck_usage")||{input:0,output:0,cost:0};
 var autoMems=ls("ck_autoMems")||[];
-var memExtractCount=0;
+var memExtractCount=parseInt(lr("ck_memCnt"))||0;
 
 var convIdx=ls("ck_convIdx")||[];
 var curConv=lr("ck_curConv");
@@ -802,7 +802,12 @@ async function extractMemories(manual){
         messages:[{role:"user",content:existingMems+"[Recent conversation]\n"+convText+"\n\nExtract new memories:"}]
       })
     });
-    if(!res.ok){if(btn)btn.classList.remove("working");return}
+    if(!res.ok){
+      if(btn)btn.classList.remove("working");
+      $("toast").textContent="\u26A0 Memory API error";$("toast").classList.remove("hidden");
+      setTimeout(function(){$("toast").textContent="Saved";$("toast").classList.add("hidden")},2500);
+      return;
+    }
     var data=await res.json();
     trackUsage(data);
     var text=(data.content||[]).filter(function(b){return b.type==="text"}).map(function(b){return b.text}).join("\n").trim();
@@ -813,11 +818,9 @@ async function extractMemories(manual){
         // Keep max 100 memories, remove oldest if exceeded
         if(autoMems.length>100)autoMems=autoMems.slice(autoMems.length-100);
         saveAutoMems();renderAutoMems();
-        if(manual){
-          $("toast").textContent="\u2713 "+newMems.length+" memories saved";
-          $("toast").classList.remove("hidden");
-          setTimeout(function(){$("toast").textContent="Saved";$("toast").classList.add("hidden")},2500);
-        }
+        $("toast").textContent="\u2713 "+newMems.length+" memories saved"+(manual?"":" (auto)");
+        $("toast").classList.remove("hidden");
+        setTimeout(function(){$("toast").textContent="Saved";$("toast").classList.add("hidden")},2500);
       }else if(manual){
         $("toast").textContent="No new memories found";
         $("toast").classList.remove("hidden");
@@ -828,9 +831,14 @@ async function extractMemories(manual){
       $("toast").classList.remove("hidden");
       setTimeout(function(){$("toast").textContent="Saved";$("toast").classList.add("hidden")},2000);
     }
-  }catch(e){}
+  }catch(e){
+    // Show error so user knows extraction failed
+    $("toast").textContent="\u26A0 Memory extraction failed";
+    $("toast").classList.remove("hidden");
+    setTimeout(function(){$("toast").textContent="Saved";$("toast").classList.add("hidden")},2500);
+  }
   if(btn)btn.classList.remove("working");
-  memExtractCount=0;
+  memExtractCount=0;lr("ck_memCnt","0");
 }
 
 function scrollB(){var a=$("chatArea");requestAnimationFrame(function(){a.scrollTop=a.scrollHeight})}
@@ -1013,8 +1021,8 @@ async function send(){
     hideDots();addBub("assistant",assT,false,msgs.length-1,thinkT);
     if(compressOn&&charCount(msgs)>15000)await compress();
     // Auto extract memories every 20 messages
-    memExtractCount++;
-    if(memExtractCount>=20){extractMemories(false)}
+    memExtractCount++;lr("ck_memCnt",""+memExtractCount);
+    if(memExtractCount>=10){extractMemories(false)}
   }catch(err){
     hideDots();var area=$("chatArea");var ed2=document.createElement("div");ed2.className="error-msg";ed2.textContent="\u26A0 "+err.message;area.appendChild(ed2);scrollB();
   }finally{loading=false;updSendBtn();inp.focus()}
