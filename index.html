@@ -841,6 +841,28 @@ async function extractMemories(manual){
   memExtractCount=0;lr("ck_memCnt","0");
 }
 
+async function updateRollingSummary(){
+  if(!apiKey.trim()||msgs.length<4)return;
+  var existing=getSummary();
+  var recentMsgs=msgs.slice(-10);
+  var prompt="";
+  if(existing)prompt+="[Existing summary]\n"+existing+"\n\n";
+  prompt+="[Recent messages to incorporate]\n";
+  recentMsgs.forEach(function(m){prompt+=(m.role==="user"?"User: ":"Assistant: ")+m.content+"\n\n"});
+  try{
+    var res=await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","x-api-key":apiKey.trim(),"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:1500,system:"Update the conversation summary by incorporating the recent messages. Keep all important existing info and add new key details: topics discussed, decisions, emotions, names, preferences. Use the same language as the conversation. Output ONLY the updated summary.",messages:[{role:"user",content:prompt}]})
+    });
+    if(!res.ok)return;
+    var data=await res.json();
+    trackUsage(data);
+    var sum=(data.content||[]).filter(function(b){return b.type==="text"}).map(function(b){return b.text}).join("\n");
+    if(sum)setSummary(sum);
+  }catch(e){}
+}
+
 function scrollB(){var a=$("chatArea");requestAnimationFrame(function(){a.scrollTop=a.scrollHeight})}
 function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
 
@@ -1020,9 +1042,8 @@ async function send(){
     msgs.push(obj);saveMsgs(curConv,msgs);
     hideDots();addBub("assistant",assT,false,msgs.length-1,thinkT);
     if(compressOn&&charCount(msgs)>15000)await compress();
-    // Auto extract memories every 20 messages
     memExtractCount++;lr("ck_memCnt",""+memExtractCount);
-    if(memExtractCount>=10){extractMemories(false)}
+    if(memExtractCount>=10){extractMemories(false);updateRollingSummary()}
   }catch(err){
     hideDots();var area=$("chatArea");var ed2=document.createElement("div");ed2.className="error-msg";ed2.textContent="\u26A0 "+err.message;area.appendChild(ed2);scrollB();
   }finally{loading=false;updSendBtn();inp.focus()}
