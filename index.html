@@ -63,6 +63,7 @@ html,body{height:100%;width:100%;overflow:hidden;background:#0f0f1a;color:#e8e6f
 .bubble.assistant .num-item{padding-left:20px;position:relative;margin:2px 0}
 .bubble.assistant .num-label{position:absolute;left:2px;font-weight:600}
 .msg-actions{display:flex;gap:6px;margin-top:3px}
+.msg-time{font-size:10px;opacity:.3;margin-top:2px}
 .action-btn{background:none;border:none;cursor:pointer;opacity:.35;color:inherit;padding:3px 6px;display:flex;align-items:center;gap:3px;font-size:11px;font-family:inherit;border-radius:6px}
 .action-btn:active{opacity:1;background:rgba(255,255,255,.08)}
 .typing-dots{display:flex;gap:5px;align-items:center;padding:14px 20px}
@@ -370,6 +371,7 @@ function saveMsgs(id,m){
   // Strip base64 data from attachments before saving (huge space saver)
   var stripped=m.map(function(msg){
     var copy={role:msg.role,content:msg.content};
+    if(msg.ts)copy.ts=msg.ts;
     if(msg.thinking)copy.thinking=msg.thinking;
     if(msg.attachments&&msg.attachments.length>0){
       copy.attachments=msg.attachments.map(function(a){
@@ -381,7 +383,7 @@ function saveMsgs(id,m){
   ls("ck_m_"+id,stripped);
 }
 function loadMsgs(id){return ls("ck_m_"+id)||[]}
-function delMsgs(id){try{localStorage.removeItem("ck_m_"+id);localStorage.removeItem("ck_s_"+id);localStorage.removeItem("ck_a_"+id)}catch(e){}}
+function delMsgs(id){try{localStorage.removeItem("ck_m_"+id);localStorage.removeItem("ck_a_"+id)}catch(e){}}
 
 var $=document.getElementById.bind(document);
 
@@ -727,9 +729,12 @@ function buildMsgContent(text){
   return parts;
 }
 function buildApiMsgs(){
-  var apiMsgs=msgs.map(function(m){
+  var recent=msgs.slice(-8);
+  var apiMsgs=recent.map(function(m){
     var c=m.content;
-    // Only include attachments that still have base64 data (current session only)
+    // Prepend timestamp so model can see when message was sent
+    var prefix="";
+    if(m.ts){var d=new Date(m.ts);prefix="["+d.getFullYear()+"/"+(d.getMonth()+1)+"/"+d.getDate()+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+"] "}
     if(Array.isArray(m.attachments)&&m.attachments.length>0&&m.attachments[0].data){
       var parts=[];
       m.attachments.forEach(function(a){
@@ -737,12 +742,11 @@ function buildApiMsgs(){
         if(a.isImg)parts.push({type:"image",source:{type:"base64",media_type:a.mediaType,data:a.data}});
         else if(a.mediaType==="application/pdf")parts.push({type:"document",source:{type:"base64",media_type:a.mediaType,data:a.data}});
       });
-      if(parts.length>0){parts.push({type:"text",text:c});return{role:m.role,content:parts}}
+      if(parts.length>0){parts.push({type:"text",text:prefix+c});return{role:m.role,content:parts}}
     }
-    return{role:m.role,content:c};
+    return{role:m.role,content:prefix+c};
   });
   // Add cache_control to second-to-last message
-  // This caches system + all history except the very last exchange
   if(apiMsgs.length>=2){
     var ci=apiMsgs.length-2;
     var target=apiMsgs[ci];
@@ -939,6 +943,14 @@ function addBub(role,content,noA,idx,think){
   }
   row.appendChild(bub);
 
+  // Timestamp
+  var ts_msg=msgs[idx];
+  if(ts_msg&&ts_msg.ts){
+    var td=new Date(ts_msg.ts);
+    var ts=String(td.getHours()).padStart(2,"0")+":"+String(td.getMinutes()).padStart(2,"0");
+    var timeDiv=document.createElement("div");timeDiv.className="msg-time";timeDiv.textContent=ts;
+    row.appendChild(timeDiv);
+  }
   var acts=document.createElement("div");acts.className="msg-actions";
   if(role==="user"&&typeof idx==="number"){
     var eb=document.createElement("button");eb.className="action-btn";
@@ -958,8 +970,8 @@ function addBub(role,content,noA,idx,think){
 function showDots(){var em=$("emptyState");if(em)em.style.display="none";var area=$("chatArea");var r=document.createElement("div");r.className="msg-row assistant";r.id="typingRow";r.innerHTML='<div class="bubble assistant"><div class="typing-dots"><span></span><span></span><span></span></div></div>';area.appendChild(r);scrollB()}
 function hideDots(){var el=$("typingRow");if(el)el.remove()}
 
-function getSummary(){return lr("ck_s_"+curConv)}
-function setSummary(s){lr("ck_s_"+curConv,s)}
+function getSummary(){return lr("ck_summary")}
+function setSummary(s){lr("ck_summary",s)}
 
 function buildSys(){
   var blocks=[];
@@ -1018,7 +1030,7 @@ async function send(){
   var inp=$("msgInput"),text=inp.value.trim();
   if((!text&&attachments.length===0)||loading||!apiKey.trim())return;
   if(editIdx>=0){msgs=msgs.slice(0,editIdx);editIdx=-1;$("editBar").classList.add("hidden")}
-  var msgObj={role:"user",content:text||"(image)"};
+  var msgObj={role:"user",content:text||"(image)",ts:Date.now()};
   if(attachments.length>0)msgObj.attachments=JSON.parse(JSON.stringify(attachments));
   msgs.push(msgObj);
   updTitle(curConv,msgs[0].content);
@@ -1038,10 +1050,9 @@ async function send(){
     var thinkT="",assT="";
     (data.content||[]).forEach(function(b){if(b.type==="thinking")thinkT+=b.thinking;else if(b.type==="text")assT+=b.text});
     if(!assT)assT="(No response)";
-    var obj={role:"assistant",content:assT};if(thinkT)obj.thinking=thinkT;
+    var obj={role:"assistant",content:assT,ts:Date.now()};if(thinkT)obj.thinking=thinkT;
     msgs.push(obj);saveMsgs(curConv,msgs);
     hideDots();addBub("assistant",assT,false,msgs.length-1,thinkT);
-    if(compressOn&&charCount(msgs)>15000)await compress();
     memExtractCount++;lr("ck_memCnt",""+memExtractCount);
     if(memExtractCount>=10){extractMemories(false);updateRollingSummary()}
   }catch(err){
