@@ -732,9 +732,6 @@ function buildApiMsgs(){
   var recent=msgs.slice(-8);
   var apiMsgs=recent.map(function(m){
     var c=m.content;
-    // Prepend timestamp so model can see when message was sent
-    var prefix="";
-    if(m.ts){var d=new Date(m.ts);prefix="["+d.getFullYear()+"/"+(d.getMonth()+1)+"/"+d.getDate()+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+"] "}
     if(Array.isArray(m.attachments)&&m.attachments.length>0&&m.attachments[0].data){
       var parts=[];
       m.attachments.forEach(function(a){
@@ -742,9 +739,9 @@ function buildApiMsgs(){
         if(a.isImg)parts.push({type:"image",source:{type:"base64",media_type:a.mediaType,data:a.data}});
         else if(a.mediaType==="application/pdf")parts.push({type:"document",source:{type:"base64",media_type:a.mediaType,data:a.data}});
       });
-      if(parts.length>0){parts.push({type:"text",text:prefix+c});return{role:m.role,content:parts}}
+      if(parts.length>0){parts.push({type:"text",text:c});return{role:m.role,content:parts}}
     }
-    return{role:m.role,content:prefix+c};
+    return{role:m.role,content:c};
   });
   // Add cache_control to second-to-last message
   if(apiMsgs.length>=2){
@@ -989,7 +986,19 @@ function buildSys(){
   var now=new Date();
   var days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
   var timeStr=now.getFullYear()+"/"+(now.getMonth()+1)+"/"+now.getDate()+" "+days[now.getDay()]+" "+String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
-  blocks.push({type:"text",text:"[Current time]\n"+timeStr});
+  // Message timeline for context
+  var recent=msgs.slice(-8);
+  var timeline=[];
+  recent.forEach(function(m,i){
+    if(m.ts){
+      var d=new Date(m.ts);
+      var t=d.getFullYear()+"/"+(d.getMonth()+1)+"/"+d.getDate()+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+      timeline.push((m.role==="user"?"User":"You")+" messaged at "+t);
+    }
+  });
+  var timeInfo="[Current time]\n"+timeStr;
+  if(timeline.length>0)timeInfo+="\n[Recent message times]\n"+timeline.join("\n");
+  blocks.push({type:"text",text:timeInfo});
   return blocks.length>0?blocks:null;
 }
 
